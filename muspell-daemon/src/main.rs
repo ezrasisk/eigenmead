@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use iroh::{endpoint::presets, Endpoint, EndpointId, EndpointAddr};
+use iroh::{endpoint::presets, Endpoint, EndpointId};
 use tracing::{info, warn};
 use std::time::Duration;
 
@@ -12,12 +12,8 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Start the daemon (listens for incoming connections)
     Run,
-
-    /// Connect to another node by EndpointId (z32 format)
     Connect {
-        /// EndpointId of the peer
         endpoint_id: String,
     },
 }
@@ -31,43 +27,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let endpoint = Endpoint::builder(presets::N0)
         .bind()
         .await
-        .map_err(|e| format!("Failed to bind endpoint: {}", e))?;
+        .map_err(|e| format!("Failed to bind: {}", e))?;
 
     let my_id = endpoint.id();
 
     info!(" Muspell Daemon started");
     info!("   My EndpointID : {}", my_id);
 
-    let addr = endpoint.addr();
-    info!("   Relay URLs    : {:?}", addr.relay_urls().collect::<Vec<_>>());
-    info!("   Direct IPs    : {:?}", addr.ip_addrs().collect::<Vec<_>>());
-
     match args.command {
         Commands::Run => {
-            info!(" Listening for incoming connections...");
-            info!("   Share this command with the other machine:");
-            info!("   cargo run -p muspell-daemon -- connect {}", my_id);
+            info!(" Listening mode - Share this ID:");
+            info!("{}", my_id);
 
-            // Simple accept loop - no custom ALPN
-            while let Some(incoming) = endpoint.accept().await {
-                let connecting = match incoming.accept() {
-                    Ok(connecting) => connecting,
-                    Err(e) => {
-                        warn!("Failed to accept incoming: {}", e);
-                        continue;
-                    }
-                };
+            // Simple accept loop using Iroh's recommended pattern
+            loop {
+                tokio::select! {
+                    Some(incoming) = endpoint.accept() => {
+                        tokio::spawn(async move {
+                            let connecting = match incoming.accept() {
+                                Ok(c) => c,
+                                Err(e) => {
+                                    warn!("Accept failed: {}", e);
+                                    return;
+                                }
+                            };
 
-                tokio::spawn(async move {
-                    match connecting.await {
-                        Ok(conn) => {
-                            info!(" New connection from {}", conn.remote_id());
-                            // Gracefully close
-                            conn.close(0u32.into(), b"closed");
-                        }
-                        Err(e) => warn!("Failed to establish connection: {}", e),
+                            match connecting.await {
+                                Ok(conn) => {
+                                    info!(" Connected from {}", conn.remote_id());
+                                    // Just close for now - we'll add echo later
+                                    conn.close(0u32.into(), b"ok");
+                                }
+                                Err(e) => warn!("Connection failed: {}", e),
+                            }
+                        });
                     }
-                });
+                    _ = tokio::signal::ctrl_c() => {
+                        info!("Shutting down...");
+                        break;
+                    }
+                }
             }
         }
 
@@ -75,26 +74,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let peer_id: EndpointId = match endpoint_id.parse() {
                 Ok(id) => id,
                 Err(_) => {
-                    warn!("Invalid EndpointID format");
+                    warn!("Invalid EndpointID");
                     return Ok(());
                 }
             };
 
-            info!(" Attempting to connect to {}", peer_id);
+            info!(" Connecting to {}", peer_id);
 
-            let peer_addr = EndpointAddr::from(peer_id);
+            let peer_addr = iroh::EndpointAddr::from(peer_id);
 
-            // Use a standard Iroh ALPN (this is what most examples use)
-            const DEFAULT_ALPN: &[u8] = b"/iroh/0.1";
+            // Use a very standard Iroh ALPN that should be accepted
+            const ALPN: &[u8] = b"/iroh/0.1";
 
-            match tokio::time::timeout(
-                Duration::from_secs(60),
-                endpoint.connect(peer_addr, DEFAULT_ALPN),
-            ).await {
-                Ok(Ok(connection)) => {
-                    info!(" Successfully connected to {}", peer_id);
+            match tokio::time::timeout(Duration::from_secs(45), endpoint.connect(peer_addr, ALPN)).await {
+                Ok(Ok(conn)) => {
+                    info!(" Connected successfully!");
 
-                    let (mut send, mut recv) = match connection.open_bi().await {
+                    let (mut send, mut recv) = match conn.open_bi().await {
                         Ok(s) => s,
                         Err(e) => {
                             warn!("Failed to open stream: {}", e);
@@ -102,22 +98,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     };
 
-                    if let Err(e) = send.write_all(b"Hello from the other machine!").await {
-                        warn!("Failed to send message: {}", e);
-                    }
+                    let _ = send.write_all(b"Hi from the other side").await;
                     let _ = send.finish();
 
-                    info!(" Sent greeting");
-
-                    let mut buf = vec![0u8; 512];
+                    let mut buf = vec![0; 256];
                     if let Ok(Some(n)) = recv.read(&mut buf).await {
                         if n > 0 {
-                            info!(" Received: {}", String::from_utf8_lossy(&buf[0..n]));
+                            info!("Received: {}", String::from_utf8_lossy(&buf[0..n]));
                         }
                     }
                 }
-                Ok(Err(e)) => warn!(" Connection failed: {}", e),
-                Err(_) => warn!(" Connection timed out after 60 seconds"),
+                Ok(Err(e)) => warn!("Connection failed: {}", e),
+                Err(_) => warn!("Timed out trying to connect"),
             }
         }
     }
