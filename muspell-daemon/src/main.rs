@@ -22,8 +22,6 @@ enum Commands {
     },
 }
 
-const ALPN: &[u8] = b"muspell/0.1";
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
@@ -50,6 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("   Share this command with the other machine:");
             info!("   cargo run -p muspell-daemon -- connect {}", my_id);
 
+            // Simple accept loop - no custom ALPN
             while let Some(incoming) = endpoint.accept().await {
                 let connecting = match incoming.accept() {
                     Ok(connecting) => connecting,
@@ -62,9 +61,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tokio::spawn(async move {
                     match connecting.await {
                         Ok(conn) => {
-                            info!("📥 New connection from {}", conn.remote_id());
-                            // Correct way to close in iroh 0.97
-                            conn.close(0u32.into(), b"closed by muspell");
+                            info!(" New connection from {}", conn.remote_id());
+                            // Gracefully close
+                            conn.close(0u32.into(), b"closed");
                         }
                         Err(e) => warn!("Failed to establish connection: {}", e),
                     }
@@ -85,32 +84,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let peer_addr = EndpointAddr::from(peer_id);
 
+            // Use a standard Iroh ALPN (this is what most examples use)
+            const DEFAULT_ALPN: &[u8] = b"/iroh/0.1";
+
             match tokio::time::timeout(
                 Duration::from_secs(60),
-                endpoint.connect(peer_addr, ALPN),
+                endpoint.connect(peer_addr, DEFAULT_ALPN),
             ).await {
                 Ok(Ok(connection)) => {
-                    info!(" Connected to {}", peer_id);
+                    info!(" Successfully connected to {}", peer_id);
 
                     let (mut send, mut recv) = match connection.open_bi().await {
                         Ok(s) => s,
                         Err(e) => {
-                            warn!("Failed to open bi-directional stream: {}", e);
+                            warn!("Failed to open stream: {}", e);
                             return Ok(());
                         }
                     };
 
-                    // Send greeting
-                    if let Err(e) = send.write_all(b"Hello from Muspell Daemon!").await {
+                    if let Err(e) = send.write_all(b"Hello from the other machine!").await {
                         warn!("Failed to send message: {}", e);
                     }
-                    if let Err(e) = send.finish() {
-                        warn!("Failed to finish send: {}", e);
-                    }
+                    let _ = send.finish();
 
                     info!(" Sent greeting");
 
-                    // Read any response
                     let mut buf = vec![0u8; 512];
                     if let Ok(Some(n)) = recv.read(&mut buf).await {
                         if n > 0 {
