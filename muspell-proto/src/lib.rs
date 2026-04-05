@@ -31,10 +31,16 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod types;
+pub mod capability;
 
 // Re-export all public primitives at crate root for ergonomic imports:
 //   use muspell_proto::{Did, ContentId, …};
 pub use types::{
     Bytes, ContentId, Did, FrameId, HashAlg, HumanName, MimeType, NamespaceId, NodeId,
     ProtocolVersion, Signature, Timestamp,
+};
+
+pub use capability::{
+    Action, ActionSet, AttenuationError, Capability, CapabilityError, CapabilityId,
+    ResourceId, MAX_CHAIN_DEPTH,
 };
