@@ -2,6 +2,8 @@
 members = [
     "muspell-daemon",
     "muspell-proto",
+    "muspell-identity",
+    #"muspell-transport",
 ]
 resolver = "2"
 
@@ -13,6 +15,8 @@ repository  = "https://github.com/muspell/muspell"
 
 # Shared dependency versions — bump here, not per-crate
 [workspace.dependencies]
+zeroize            = { version = "1",    features = ["derive"] }
+ed25519-dalek      = { version = "2",    features = ["rand_core", "zeroize"] }
 tokio              = { version = "1",    features = ["full"] }
 serde              = { version = "1",    features = ["derive"] }
 clap               = { version = "4.6",  features = ["derive"] }
@@ -26,3 +30,4 @@ thiserror          = "1"
 tracing            = "0.1"
 tracing-subscriber = "0.3"
 serde-big-array    = "0.5"
+ciborium           = "0.2"
