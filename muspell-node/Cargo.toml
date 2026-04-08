@@ -1,0 +1,24 @@
+[package]
+name        = "muspell-node"
+description = "Assembles transport, RPC, pub/sub and identity into a running Muspell node"
+version.workspace    = true
+edition.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+
+[dependencies]
+muspell-proto     = { path = "../muspell-proto" }
+muspell-identity  = { path = "../muspell-identity" }
+muspell-transport = { path = "../muspell-transport" }
+muspell-rpc       = { path = "../muspell-rpc" }
+muspell-pubsub    = { path = "../muspell-pubsub" }
+
+async-trait.workspace  = true
+dashmap.workspace      = true
+thiserror.workspace    = true
+tracing.workspace      = true
+tokio.workspace        = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tracing-subscriber = "0.3"
