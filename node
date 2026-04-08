@@ -1,0 +1,40 @@
+[workspace]
+members = [
+    "muspell-daemon",
+    "muspell-proto",
+    "muspell-identity",
+    "muspell-transport",
+    "muspell-rpc",
+    "muspell-pubsub",
+    "muspell-node",
+]
+resolver = "2"
+
+[workspace.package]
+version     = "0.1.0"
+edition     = "2024"
+authors     = ["Muspell Contributors"]
+repository  = "https://github.com/muspell/muspell"
+
+# Shared dependency versions — bump here, not per-crate
+[workspace.dependencies]
+tokio-stream       = { version = "0.1", features = ["sync"] }
+zeroize            = { version = "1",    features = ["derive"] }
+ed25519-dalek      = { version = "2",    features = ["rand_core", "zeroize"] }
+tokio              = { version = "1",    features = ["full"] }
+serde              = { version = "1",    features = ["derive"] }
+clap               = { version = "4.6",  features = ["derive"] }
+iroh               = "0.97"
+blake3             = "1"
+sha2               = "0.10"
+bs58               = "0.5"
+hex                = "0.4"
+rand               = "0.8"
+thiserror          = "1"
+tracing            = "0.1"
+tracing-subscriber = "0.3"
+serde-big-array    = "0.5"
+ciborium           = "0.2"
+async-trait        = "0.1"
+dashmap            = "6"
+futures            = "0.3"
